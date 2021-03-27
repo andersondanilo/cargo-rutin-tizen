@@ -1,0 +1,10 @@
+[tizen]
+is_emulator = false
+device_triple = "arm-linux-gnueabi"
+emulator_triple = "i586-linux-gnueabi"
+
+[tizen.target.arm-linux-gnueabi]
+rust_triple = "arm-unknown-linux-gnueabi"
+
+[tizen.target.i586-linux-gnueabi]
+rust_triple = "i586-unknown-linux-gnu"
