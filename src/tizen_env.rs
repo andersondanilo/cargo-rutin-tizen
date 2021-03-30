@@ -1,5 +1,6 @@
 use crate::error::TizenError;
 use clap::ArgMatches;
+use std::collections::HashMap;
 use std::fs;
 use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
@@ -11,20 +12,26 @@ use toml::Value;
 pub struct TizenEnv {
     pub raw_config_values: Vec<ConfigValue>,
 
-    pub studio_path: String,
+    pub base_path: PathBuf,
+    pub studio_path: PathBuf,
+    pub tizen_bin: String,
     pub is_emulator: bool,
     pub api_version: String,
     pub app_profile: String,
-    pub rootstrap_path: String,
+    pub rootstrap_path: PathBuf,
     pub tizen_triple: String,
     pub rust_triple: String,
     pub toolchain: String,
-    pub toolchain_path: String,
+    pub toolchain_path: PathBuf,
     pub rust_linker: String,
     pub app_id: String,
     pub app_version: String,
     pub app_package: String,
     pub app_exec: String,
+    pub app_label: String,
+    pub app_ui_type: String,
+    pub cargo_pkg_name: String,
+    pub sync_files: Vec<String>,
 }
 
 impl TizenEnv {
@@ -47,22 +54,45 @@ impl TizenEnv {
         let app_version = config_provider.get_value(&ConfigType::AppVersion)?;
         let app_package = config_provider.get_value(&ConfigType::AppPackage)?;
         let app_exec = config_provider.get_value(&ConfigType::AppExec)?;
+        let tizen_bin = config_provider.get_value(&ConfigType::TizenBin)?;
+        let app_label = config_provider.get_value(&ConfigType::AppLabel)?;
+        let app_ui_type = config_provider.get_value(&ConfigType::AppUiType)?;
+        let sync_files = config_provider.get_value(&ConfigType::SyncFiles)?;
+
+        let cargo_pkg_name = match config_provider.get_cargo_value("package.name") {
+            Some(s) => s,
+            None => {
+                return Err(TizenError {
+                    message: "Can't get package.name from Cargo.toml".to_string(),
+                })
+            }
+        };
+
+        let sync_files_array: Vec<&str> = sync_files.value.split(',').collect();
+        let sync_files_array: Vec<String> =
+            sync_files_array.iter().map(|s| s.to_string()).collect();
 
         Ok(Self {
-            studio_path: studio_path.value.clone(),
+            base_path: PathBuf::from(cwd),
+            studio_path: PathBuf::from(&studio_path.value),
             is_emulator: str_to_bool(&studio_path.value),
             api_version: api_version.value.clone(),
             app_profile: app_profile.value.clone(),
-            rootstrap_path: rootstrap_path.value.clone(),
+            rootstrap_path: PathBuf::from(&rootstrap_path.value),
             tizen_triple: tizen_triple.value.clone(),
             rust_triple: rust_triple.value.clone(),
             toolchain: toolchain.value.clone(),
-            toolchain_path: toolchain_path.value.clone(),
+            toolchain_path: PathBuf::from(&toolchain_path.value),
             rust_linker: rust_linker.value.clone(),
             app_id: app_id.value.clone(),
             app_version: app_version.value.clone(),
             app_package: app_package.value.clone(),
             app_exec: app_exec.value.clone(),
+            tizen_bin: tizen_bin.value.clone(),
+            cargo_pkg_name,
+            sync_files: sync_files_array,
+            app_label: app_label.value.clone(),
+            app_ui_type: app_ui_type.value.clone(),
             raw_config_values: vec![
                 studio_path,
                 is_emulator,
@@ -80,8 +110,72 @@ impl TizenEnv {
                 app_version,
                 app_package,
                 app_exec,
+                tizen_bin,
+                app_label,
+                sync_files,
+                app_ui_type,
             ],
         })
+    }
+
+    pub fn get_additional_build_env(&self) -> HashMap<String, String> {
+        let mut envs: HashMap<String, String> = HashMap::new();
+
+        let rootstrap_path = match self.rootstrap_path.to_str() {
+            Some(s) => String::from(s),
+            None => "".to_string(),
+        };
+
+        envs.insert("PKG_CONFIG_SYSROOT_DIR".to_string(), rootstrap_path.clone());
+        envs.insert(
+            "PKG_CONFIG_LIBDIR".to_string(),
+            format!("{}/usr/lib/pkgconfig", &rootstrap_path),
+        );
+        envs.insert("PKG_CONFIG_PATH".to_string(), "".to_string());
+        envs.insert("PKG_CONFIG_ALLOW_CROSS".to_string(), "1".to_string());
+        envs.insert(
+            "RUSTFLAGS".to_string(),
+            format!("-C link-args=--sysroot={}", &rootstrap_path),
+        );
+
+        envs.insert(
+            format!(
+                "CARGO_TARGET_{}_LINKER",
+                &self.rust_triple.clone().to_uppercase().replace('-', "_")
+            ),
+            self.rust_linker.clone(),
+        );
+
+        envs
+    }
+
+    pub fn rust_output_dir(&self, is_release: bool) -> PathBuf {
+        let mut out_path = self.base_path.clone();
+        out_path.push("target");
+        out_path.push(&self.rust_triple);
+        out_path.push(if is_release { "release" } else { "debug" });
+
+        out_path
+    }
+
+    pub fn tizen_output_dir(&self, is_release: bool) -> PathBuf {
+        let mut out_path = self.rust_output_dir(is_release);
+
+        out_path.push("tizen-tpk");
+
+        out_path
+        // let mut out_path = self.base_path.clone();
+        // out_path.push(if is_release { "Release" } else { "DebugTest" });
+
+        // out_path
+    }
+
+    pub fn arch_alias(&self) -> String {
+        if self.tizen_triple.contains("arm") {
+            "arm".to_string()
+        } else {
+            "x86".to_string()
+        }
     }
 }
 
@@ -107,6 +201,10 @@ pub enum ConfigType {
     Toolchain,
     ToolchainPath,
     RustLinker,
+    TizenBin,
+    AppLabel,
+    AppUiType,
+    SyncFiles,
 }
 
 pub enum ConfigFrom {
@@ -303,9 +401,11 @@ impl<'a> ConfigProvider<'a> {
             return Some(result_str);
         }
 
-        for cargo_file in self.cargo_files.iter() {
-            if let Some(result_str) = Self::get_toml_str(&cargo_file, &key) {
-                return Some(result_str);
+        if !key.starts_with("package.") {
+            for cargo_file in self.cargo_files.iter() {
+                if let Some(result_str) = Self::get_toml_str(&cargo_file, &key) {
+                    return Some(result_str);
+                }
             }
         }
 
@@ -346,15 +446,24 @@ impl<'a> ConfigProvider<'a> {
                 let app_profile = self.get_value(&ConfigType::AppProfile)?.value;
                 let is_emulator = str_to_bool(&self.get_value(&ConfigType::IsEmulator)?.value);
 
-                Ok(format!(
-                    "{}/platforms/tizen-{}/{}/rootstraps/{}-{}-{}.core",
-                    self.get_value(&ConfigType::StudioPath)?.value,
-                    api_version,
+                let mut path = PathBuf::from(&self.get_value(&ConfigType::StudioPath)?.value);
+                path.push("platforms");
+                path.push(format!("tizen-{}", api_version));
+                path.push(format!("{}", app_profile));
+                path.push("rootstraps");
+                path.push(format!(
+                    "{}-{}-{}.core",
                     app_profile,
-                    app_profile,
                     api_version,
-                    if is_emulator { "emulator" } else { "device" },
-                ))
+                    if is_emulator { "emulator" } else { "device" }
+                ));
+
+                match path.to_str() {
+                    Some(str_value) => Ok(str_value.to_string()),
+                    None => Err(TizenError {
+                        message: "Can't get path".to_string(),
+                    }),
+                }
             }
             ConfigType::SelectedTriple => {
                 let is_emulator = str_to_bool(&self.get_value(&ConfigType::IsEmulator)?.value);
@@ -400,16 +509,48 @@ impl<'a> ConfigProvider<'a> {
                 let tizen_toolchain = self.get_value(&ConfigType::Toolchain)?.value;
                 let selected_triple = self.get_value(&ConfigType::SelectedTriple)?.value;
 
-                Ok(format!(
-                    "{}/tools/{}-{}/bin",
-                    &tizen_studio_path, &selected_triple, &tizen_toolchain
-                ))
+                let mut path = PathBuf::from(tizen_studio_path);
+                path.push("tools");
+                path.push(format!("{}-{}", selected_triple, tizen_toolchain));
+                path.push("bin");
+
+                match path.to_str() {
+                    Some(str_value) => Ok(str_value.to_string()),
+                    None => Err(TizenError {
+                        message: "Can't get path".to_string(),
+                    }),
+                }
+            }
+            ConfigType::TizenBin => {
+                let tizen_studio_path = self.get_value(&ConfigType::StudioPath)?.value;
+
+                let mut path = PathBuf::from(tizen_studio_path);
+                path.push("tools");
+                path.push("ide");
+                path.push("bin");
+                path.push("tizen");
+
+                match path.to_str() {
+                    Some(str_value) => Ok(str_value.to_string()),
+                    None => Err(TizenError {
+                        message: "Can't get path".to_string(),
+                    }),
+                }
             }
             ConfigType::RustLinker => {
                 let toolchain_path = self.get_value(&ConfigType::ToolchainPath)?.value;
                 let selected_triple = self.get_value(&ConfigType::SelectedTriple)?.value;
 
-                Ok(format!("{}/{}-gcc", &toolchain_path, &selected_triple))
+                let mut path = PathBuf::from(&toolchain_path);
+                path.push(&toolchain_path);
+                path.push(format!("{}-gcc", &selected_triple));
+
+                match path.to_str() {
+                    Some(str_value) => Ok(str_value.to_string()),
+                    None => Err(TizenError {
+                        message: "Can't get path".to_string(),
+                    }),
+                }
             }
             _ => Err(TizenError {
                 message: "no computed for value".to_string(),
@@ -432,6 +573,10 @@ impl<'a> ConfigProvider<'a> {
             ConfigType::EmulatorTriple => Some("tizen.emulator_triple".to_string()),
             ConfigType::SelectedTriple => Some("tizen.selected_triple".to_string()),
             ConfigType::Toolchain => Some("tizen.toolchain".to_string()),
+            ConfigType::TizenBin => Some("tizen.bin_path".to_string()),
+            ConfigType::SyncFiles => Some("tizen.sync_files".to_string()),
+            ConfigType::AppLabel => Some("tizen.app_label".to_string()),
+            ConfigType::AppUiType => Some("tizen.app_ui_type".to_string()),
             _ => None,
         }
     }
@@ -458,7 +603,9 @@ impl<'a> ConfigProvider<'a> {
             ConfigType::ApiVersion => Some("/ns:manifest/@api-version".to_string()),
             ConfigType::AppPackage => Some("/ns:manifest/@package".to_string()),
             ConfigType::AppExec => Some("/ns:manifest/ns:ui-application/@exec".to_string()),
+            ConfigType::AppLabel => Some("/ns:manifest/ns:ui-application/ns:label".to_string()),
             ConfigType::AppProfile => Some("/ns:manifest/ns:profile/@name".to_string()),
+            ConfigType::AppUiType => Some("/ns:manifest/ns:ui-application/@type".to_string()),
             _ => None,
         }
     }
@@ -521,12 +668,28 @@ impl<'a> ConfigProvider<'a> {
         let mut new_path = PathBuf::from(base_path);
 
         let last_vector: Vec<Value> = match new_path.pop() {
-            true => Self::get_cargo_config_files(&new_path),
+            true => match Self::home_dir() {
+                Some(home_path) => {
+                    if home_path == new_path {
+                        vec![]
+                    } else {
+                        Self::get_cargo_config_files(&new_path)
+                    }
+                }
+                None => vec![],
+            },
             false => vec![],
         };
 
         first_vector.extend(last_vector);
         first_vector
+    }
+
+    fn home_dir() -> Option<PathBuf> {
+        match std::env::var("HOME") {
+            Ok(str_value) => Some(PathBuf::from(str_value)),
+            Err(_) => None,
+        }
     }
 
     fn get_toml_str(toml_value: &Value, key: &str) -> Option<String> {
@@ -540,14 +703,24 @@ impl<'a> ConfigProvider<'a> {
             );
 
         match result_opt {
-            Some(val) => match val {
-                Value::String(val) => Some(val.to_string()),
-                Value::Integer(val) => Some(val.to_string()),
-                Value::Boolean(val) => Some(val.to_string()),
-                Value::Float(val) => Some(val.to_string()),
-                _ => None,
-            },
+            Some(val) => Self::toml_value_2_str(&val),
             None => None,
+        }
+    }
+
+    fn toml_value_2_str(val: &Value) -> Option<String> {
+        match val {
+            Value::String(val) => Some(val.to_string()),
+            Value::Integer(val) => Some(val.to_string()),
+            Value::Boolean(val) => Some(val.to_string()),
+            Value::Float(val) => Some(val.to_string()),
+            Value::Array(val) => Some(
+                val.iter()
+                    .filter_map(|v| Self::toml_value_2_str(v))
+                    .collect::<Vec<String>>()
+                    .join(","),
+            ),
+            _ => None,
         }
     }
 }

@@ -1,15 +1,17 @@
+use crate::error::TizenError;
 use crate::tizen_env::{ConfigFrom, TizenEnv};
 use clap::ArgMatches;
 use cli_table::{print_stdout, Cell, Table};
+use colored::*;
 
-pub fn run(tizen_env: &TizenEnv, args: &ArgMatches) -> i32 {
+pub fn run(tizen_env: &TizenEnv, args: &ArgMatches) -> Result<i32, TizenError> {
     match args.value_of("env_key") {
         Some(str_value) => show_detail(tizen_env, String::from(str_value)),
         None => list_configs(&tizen_env),
     }
 }
 
-fn show_detail(tizen_env: &TizenEnv, env_key: String) -> i32 {
+fn show_detail(tizen_env: &TizenEnv, env_key: String) -> Result<i32, TizenError> {
     let config_value = tizen_env
         .raw_config_values
         .iter()
@@ -42,26 +44,35 @@ fn show_detail(tizen_env: &TizenEnv, env_key: String) -> i32 {
 
             assert!(print_stdout(table).is_ok());
 
-            0
+            Ok(0)
         }
-        None => {
-            eprintln!("No config named {}", env_key);
-            1
-        }
+        None => Err(TizenError {
+            message: format!("No config named {}", env_key),
+        }),
     }
 }
 
-fn list_configs(tizen_env: &TizenEnv) -> i32 {
+fn list_configs(tizen_env: &TizenEnv) -> Result<i32, TizenError> {
+    println!("{}", "Configurable values:".green().bold());
+
     for raw_value in tizen_env.raw_config_values.iter() {
-        println!(
-            "{}={} # {}",
-            raw_value.env_key,
-            raw_value.value,
-            from_to_s(&raw_value.from)
-        );
+        println!("{}={}", raw_value.env_key, raw_value.value);
     }
 
-    0
+    println!(
+        "{} {} {}",
+        "Run".green(),
+        "cargo tizen config NAME_OF_CONFIG".yellow().bold(),
+        "to see more info".green()
+    );
+
+    println!("\n{}", "Other env variables:".green().bold());
+
+    for (key, value) in tizen_env.get_additional_build_env() {
+        println!("{}={}", &key, &value);
+    }
+
+    Ok(0)
 }
 
 fn from_to_s(config_from: &ConfigFrom) -> String {
