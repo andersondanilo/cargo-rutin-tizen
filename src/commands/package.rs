@@ -8,6 +8,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
 
 pub fn run(tizen_env: &TizenEnv, args: &ArgMatches) -> Result<i32, TizenError> {
     let assume_yes = args.is_present("assumeyes");
@@ -39,7 +40,9 @@ pub fn run(tizen_env: &TizenEnv, args: &ArgMatches) -> Result<i32, TizenError> {
     let exit_code = handle.wait().expect("Failed to wait on child");
 
     if !exit_code.success() {
-        eprintln!("{}", "cargo tizen package failed!".bold().red());
+        return Err(TizenError {
+            message: "cargo tizen package failed!".to_string(),
+        });
     }
 
     Ok(exit_code.code().unwrap())
@@ -114,6 +117,31 @@ fn create_tizen_output(tizen_env: &TizenEnv) -> Result<(), TizenError> {
     new_bin.push(&tizen_env.cargo_pkg_name);
 
     fs::copy(&old_bin, &new_bin)?;
+
+    if tizen_env.is_release {
+        if let Some(strip_bin) = tizen_env.strip_bin() {
+            let strip_args = ["--strip-debug", new_bin.to_str().unwrap()];
+            println!(
+                "Running {} {}",
+                strip_bin.green().bold(),
+                strip_args.join(" ").green().bold()
+            );
+
+            match Command::new(strip_bin).args(&strip_args).spawn() {
+                Ok(mut handle) => match handle.wait() {
+                    Ok(exit) => {
+                        if !exit.success() {
+                            println!("{}", "Can't strip bin".bold().red());
+                        }
+                    }
+                    Err(_) => println!("{}", "Can't strip bin".bold().red()),
+                },
+                Err(_) => println!("{}", "Can't strip bin".bold().red()),
+            }
+        } else {
+            println!("{}", "Strip tool not found!".bold().yellow());
+        }
+    }
 
     create_build_info(&tizen_env, &tizen_output_dir, &tizen_output_tpk_dir)?;
 

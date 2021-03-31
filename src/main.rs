@@ -51,7 +51,7 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("clean")
-                .about("Wrapper arround cargo clean and tizen clean")
+                .about("Wrapper arround cargo clean")
                 .args(&tizen_env_args)
                 .arg(&release_arg)
                 .arg(&forward_args),
@@ -67,6 +67,14 @@ fn main() {
                         .takes_value(true)
                         .help("Detail about config key"),
                 ),
+        )
+        .subcommand(
+            SubCommand::with_name("dev")
+                .about("Build, package, install and run")
+                .args(&tizen_env_args)
+                .arg(&assume_yes_arg)
+                .arg(&release_arg)
+                .arg(&forward_args),
         )
         .get_matches_from(get_os_args());
 
@@ -101,6 +109,18 @@ fn main() {
         }
         Some(name @ "package") => {
             commands::package::run(&tizen_env, app_matches.subcommand_matches(&name).unwrap())
+        }
+        Some(name @ "install") => {
+            commands::install::run(&tizen_env, app_matches.subcommand_matches(&name).unwrap())
+        }
+        Some(name @ "run") => {
+            commands::run::run(&tizen_env, app_matches.subcommand_matches(&name).unwrap())
+        }
+        Some(name @ "clean") => {
+            commands::clean::run(&tizen_env, app_matches.subcommand_matches(&name).unwrap())
+        }
+        Some(name @ "dev") => {
+            commands::dev::run(&tizen_env, app_matches.subcommand_matches(&name).unwrap())
         }
         _ => Err(TizenError {
             message: "No command matched!".to_string(),

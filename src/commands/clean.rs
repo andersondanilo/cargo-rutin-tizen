@@ -5,7 +5,7 @@ use clap::ArgMatches;
 
 pub fn run(tizen_env: &TizenEnv, args: &ArgMatches) -> Result<i32, TizenError> {
     let mut cargo_args: Vec<String> = vec![
-        "build".to_string(),
+        "clean".to_string(),
         format!("--target={}", &tizen_env.rust_triple),
     ];
 
@@ -19,7 +19,7 @@ pub fn run(tizen_env: &TizenEnv, args: &ArgMatches) -> Result<i32, TizenError> {
 
     if !exit_code.success() {
         return Err(TizenError {
-            message: "cargo tizen build failed!".to_string(),
+            message: "cargo tizen clean failed!".to_string(),
         });
     }
 

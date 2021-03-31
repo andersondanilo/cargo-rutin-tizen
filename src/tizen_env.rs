@@ -138,15 +138,7 @@ impl TizenEnv {
         envs.insert("PKG_CONFIG_ALLOW_CROSS".to_string(), "1".to_string());
         envs.insert(
             "RUSTFLAGS".to_string(),
-            format!(
-                "-C link-args=--sysroot={}{}",
-                &rootstrap_path,
-                if self.is_release {
-                    " -C link-args=-S"
-                } else {
-                    ""
-                },
-            ),
+            format!("-C link-args=--sysroot={}", &rootstrap_path),
         );
 
         envs.insert(
@@ -185,12 +177,36 @@ impl TizenEnv {
         out_path
     }
 
+    pub fn tpk_name(&self) -> String {
+        format!(
+            "{}-{}-{}.tpk",
+            &self.app_id,
+            &self.app_version,
+            &self.arch_alias()
+        )
+    }
+
     pub fn arch_alias(&self) -> String {
         if self.tizen_triple.contains("arm") {
             "arm".to_string()
         } else {
             "x86".to_string()
         }
+    }
+
+    pub fn strip_bin(&self) -> Option<String> {
+        fs::read_dir(&self.toolchain_path)
+            .ok()
+            .and_then(|v| {
+                v.filter_map(|entry_result| entry_result.ok())
+                    .filter_map(|entry| entry.file_name().into_string().ok())
+                    .find(|str_value| str_value.contains("strip"))
+            })
+            .map(|v| {
+                let mut complete_path = PathBuf::from(&self.toolchain_path);
+                complete_path.push(v);
+                complete_path.to_str().unwrap().to_string()
+            })
     }
 }
 
