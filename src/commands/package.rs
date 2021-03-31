@@ -10,30 +10,30 @@ use std::path::Path;
 use std::path::PathBuf;
 
 pub fn run(tizen_env: &TizenEnv, args: &ArgMatches) -> Result<i32, TizenError> {
-    let is_release = args.is_present("release");
     let assume_yes = args.is_present("assumeyes");
 
-    let tizen_output_dir = tizen_env.tizen_output_dir(is_release);
-    let rust_output_dir = tizen_env.rust_output_dir(is_release);
+    let tizen_output_dir = tizen_env.tizen_output_dir();
+    let tizen_output_tpk_dir = tizen_env.tizen_output_tpk_dir();
 
     remove_tizen_output_if_exists(&tizen_output_dir, assume_yes)?;
-    let bin_out_dir =
-        create_tizen_output(&tizen_env, &tizen_output_dir, &rust_output_dir, is_release)?;
+    create_tizen_output(&tizen_env)?;
+
+    let tizen_args = vec![
+        "package".to_string(),
+        "-t".to_string(),
+        "tpk".to_string(),
+        "--project".to_string(),
+        tizen_output_dir.to_str().unwrap().to_string(),
+    ];
 
     let mut handle = run_command(
         &tizen_env,
         &args,
         &tizen_env.tizen_bin,
-        vec![
-            "package",
-            "-t",
-            "tpk",
-            "--project",
-            tizen_output_dir.to_str().unwrap(),
-        ],
+        &tizen_args,
         None,
         false,
-        Some(&bin_out_dir),
+        Some(&tizen_output_tpk_dir),
     );
 
     let exit_code = handle.wait().expect("Failed to wait on child");
@@ -69,12 +69,11 @@ fn remove_tizen_output_if_exists(
     }
 }
 
-fn create_tizen_output(
-    tizen_env: &TizenEnv,
-    tizen_output_dir: &Path,
-    rust_output_dir: &Path,
-    is_release: bool,
-) -> Result<PathBuf, TizenError> {
+fn create_tizen_output(tizen_env: &TizenEnv) -> Result<(), TizenError> {
+    let tizen_output_dir = tizen_env.tizen_output_dir();
+    let tizen_output_tpk_dir = tizen_env.tizen_output_tpk_dir();
+    let rust_output_dir = tizen_env.rust_output_dir();
+
     fs::create_dir(&tizen_output_dir)?;
 
     let mut old_bin = PathBuf::from(&rust_output_dir);
@@ -109,37 +108,29 @@ fn create_tizen_output(
         // @TODO Copy directory
     }
 
-    let mut tizen_output_bin_dir = PathBuf::from(tizen_output_dir);
-    tizen_output_bin_dir.push("out");
+    fs::create_dir(&tizen_output_tpk_dir)?;
 
-    fs::create_dir(&tizen_output_bin_dir)?;
-
-    let mut new_bin = tizen_output_bin_dir.clone();
+    let mut new_bin = tizen_output_tpk_dir.clone();
     new_bin.push(&tizen_env.cargo_pkg_name);
 
     fs::copy(&old_bin, &new_bin)?;
 
-    create_build_info(
-        &tizen_env,
-        &tizen_output_dir,
-        &tizen_output_bin_dir,
-        &is_release,
-    )?;
+    create_build_info(&tizen_env, &tizen_output_dir, &tizen_output_tpk_dir)?;
 
     create_project_def(&tizen_env, &tizen_output_dir)?;
     create_project_xml(&tizen_env, &tizen_output_dir)?;
 
-    Ok(tizen_output_bin_dir)
+    Ok(())
 }
 
 fn create_build_info(
     tizen_env: &TizenEnv,
     tizen_output_dir: &Path,
     tizen_output_bin_dir: &Path,
-    is_release: &bool,
 ) -> Result<(), TizenError> {
+    let file_name = "build.info";
     let mut build_info_path = PathBuf::from(&tizen_output_bin_dir);
-    build_info_path.push("build.info");
+    build_info_path.push(&file_name);
 
     let mut build_info_file = File::create(build_info_path)?;
 
@@ -154,17 +145,24 @@ fn create_build_info(
     writeln!(
         build_info_file,
         "config={}",
-        if *is_release { "Release" } else { "Debug" }
+        if tizen_env.is_release {
+            "Release"
+        } else {
+            "Debug"
+        }
     )?;
     writeln!(build_info_file, "toolchain={}", tizen_env.toolchain)?;
     writeln!(build_info_file, "architecture={}", tizen_env.arch_alias())?;
+
+    println!("Created {}", &file_name.yellow());
 
     Ok(())
 }
 
 fn create_project_def(tizen_env: &TizenEnv, tizen_output_dir: &Path) -> Result<(), TizenError> {
+    let file_name = "project_def.prop";
     let mut file_path = PathBuf::from(&tizen_output_dir);
-    file_path.push("project_def.prop");
+    file_path.push(file_name);
 
     let mut file = File::create(file_path)?;
     let app_type = match tizen_env.app_ui_type.as_str() {
@@ -190,12 +188,15 @@ fn create_project_def(tizen_env: &TizenEnv, tizen_output_dir: &Path) -> Result<(
     writeln!(file, "USER_LIBS = ")?;
     writeln!(file, "USER_EDCS = ")?;
 
+    println!("Created {}", &file_name.yellow());
+
     Ok(())
 }
 
 fn create_project_xml(tizen_env: &TizenEnv, tizen_output_dir: &Path) -> Result<(), TizenError> {
+    let file_name = ".project";
     let mut file_path = PathBuf::from(&tizen_output_dir);
-    file_path.push(".project");
+    file_path.push(&file_name);
 
     let mut file = File::create(file_path)?;
 
@@ -207,6 +208,8 @@ fn create_project_xml(tizen_env: &TizenEnv, tizen_output_dir: &Path) -> Result<(
     writeln!(file, "<natures></natures>")?;
     writeln!(file, "<filteredResources></filteredResources>")?;
     writeln!(file, "</projectDescription>")?;
+
+    println!("Created {}", &file_name.yellow());
 
     Ok(())
 }

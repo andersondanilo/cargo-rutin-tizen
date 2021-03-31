@@ -4,17 +4,16 @@ use crate::tizen_env::TizenEnv;
 use clap::ArgMatches;
 
 pub fn run(tizen_env: &TizenEnv, args: &ArgMatches) -> Result<i32, TizenError> {
-    // @TODO: Pass release arg
+    let mut cargo_args: Vec<String> = vec![
+        "build".to_string(),
+        format!("--target={}", &tizen_env.rust_triple),
+    ];
 
-    let mut handle = run_command(
-        &tizen_env,
-        &args,
-        "cargo",
-        vec!["build", &format!("--target={}", &tizen_env.rust_triple)],
-        None,
-        true,
-        None,
-    );
+    if tizen_env.is_release {
+        cargo_args.push("--release".to_string());
+    }
+
+    let mut handle = run_command(&tizen_env, &args, "cargo", &cargo_args, None, true, None);
 
     let exit_code = handle.wait().expect("Failed to wait on child");
 

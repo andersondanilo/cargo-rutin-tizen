@@ -11,13 +11,13 @@ pub fn run_command(
     tizen_env: &TizenEnv,
     args_m: &ArgMatches,
     name: &str,
-    base_args: Vec<&str>,
-    last_args: Option<Vec<&str>>,
+    base_args: &[String],
+    last_args: Option<Vec<String>>,
     include_build_env: bool,
     current_dir: Option<&Path>,
 ) -> Child {
-    let forward_args: Vec<&str> = match args_m.values_of("forward_args") {
-        Some(args) => args.collect(),
+    let forward_args: Vec<String> = match args_m.values_of("forward_args") {
+        Some(args) => args.map(|v| v.to_string()).collect(),
         None => vec![],
     };
 
@@ -28,12 +28,10 @@ pub fn run_command(
 
     let working_dir = current_dir.unwrap_or(&tizen_env.base_path);
 
-    println!("Working directory: {}", &working_dir.to_str().unwrap());
-
     println!(
         "Running: {} {}",
         &name.green().bold(),
-        [&base_args[..], &forward_args[..], &last_args[..]]
+        [&base_args, &forward_args[..], &last_args[..]]
             .concat()
             .join(" ")
             .green()
@@ -41,7 +39,7 @@ pub fn run_command(
     );
 
     let command = Command::new(name)
-        .args([&base_args[..], &forward_args[..], &last_args[..]].concat())
+        .args([&base_args, &forward_args[..], &last_args[..]].concat())
         .envs(if include_build_env {
             make_process_env(tizen_env)
         } else {

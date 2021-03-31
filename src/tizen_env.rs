@@ -32,12 +32,14 @@ pub struct TizenEnv {
     pub app_ui_type: String,
     pub cargo_pkg_name: String,
     pub sync_files: Vec<String>,
+    pub is_release: bool,
 }
 
 impl TizenEnv {
     pub fn from_cargo_config(cwd: &Path, app_m: &ArgMatches) -> Result<Self, TizenError> {
         let config_provider = ConfigProvider::new(cwd.to_path_buf(), &app_m)?;
 
+        let is_release = app_m.is_present("release");
         let studio_path = config_provider.get_value(&ConfigType::StudioPath)?;
         let is_emulator = config_provider.get_value(&ConfigType::IsEmulator)?;
         let api_version = config_provider.get_value(&ConfigType::ApiVersion)?;
@@ -93,6 +95,7 @@ impl TizenEnv {
             sync_files: sync_files_array,
             app_label: app_label.value.clone(),
             app_ui_type: app_ui_type.value.clone(),
+            is_release,
             raw_config_values: vec![
                 studio_path,
                 is_emulator,
@@ -135,7 +138,15 @@ impl TizenEnv {
         envs.insert("PKG_CONFIG_ALLOW_CROSS".to_string(), "1".to_string());
         envs.insert(
             "RUSTFLAGS".to_string(),
-            format!("-C link-args=--sysroot={}", &rootstrap_path),
+            format!(
+                "-C link-args=--sysroot={}{}",
+                &rootstrap_path,
+                if self.is_release {
+                    " -C link-args=-S"
+                } else {
+                    ""
+                },
+            ),
         );
 
         envs.insert(
@@ -149,25 +160,29 @@ impl TizenEnv {
         envs
     }
 
-    pub fn rust_output_dir(&self, is_release: bool) -> PathBuf {
+    pub fn rust_output_dir(&self) -> PathBuf {
         let mut out_path = self.base_path.clone();
         out_path.push("target");
         out_path.push(&self.rust_triple);
-        out_path.push(if is_release { "release" } else { "debug" });
+        out_path.push(if self.is_release { "release" } else { "debug" });
 
         out_path
     }
 
-    pub fn tizen_output_dir(&self, is_release: bool) -> PathBuf {
-        let mut out_path = self.rust_output_dir(is_release);
+    pub fn tizen_output_dir(&self) -> PathBuf {
+        let mut out_path = self.rust_output_dir();
 
         out_path.push("tizen-tpk");
 
         out_path
-        // let mut out_path = self.base_path.clone();
-        // out_path.push(if is_release { "Release" } else { "DebugTest" });
+    }
 
-        // out_path
+    pub fn tizen_output_tpk_dir(&self) -> PathBuf {
+        let mut out_path = self.tizen_output_dir();
+
+        out_path.push("out");
+
+        out_path
     }
 
     pub fn arch_alias(&self) -> String {

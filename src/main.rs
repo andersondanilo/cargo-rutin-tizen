@@ -40,6 +40,7 @@ fn main() {
             SubCommand::with_name("install")
                 .about("Wrapper arround tizen install")
                 .args(&tizen_env_args)
+                .arg(&release_arg)
                 .arg(&forward_args),
         )
         .subcommand(
@@ -52,12 +53,14 @@ fn main() {
             SubCommand::with_name("clean")
                 .about("Wrapper arround cargo clean and tizen clean")
                 .args(&tizen_env_args)
+                .arg(&release_arg)
                 .arg(&forward_args),
         )
         .subcommand(
             SubCommand::with_name("config")
                 .about("Show config used for building the app")
                 .args(&tizen_env_args)
+                .arg(&release_arg)
                 .arg(
                     Arg::with_name("env_key")
                         .required(false)
