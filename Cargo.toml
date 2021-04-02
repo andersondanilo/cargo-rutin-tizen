@@ -1,10 +1,10 @@
 [package]
-name = "cargo-tizen"
+name = "cargo-rutin-tizen"
 description = "Cargo tool to compile and run tizen applications (wrapper arround tizen sdk tools)"
 version = "0.1.0"
 authors = ["Anderson Danilo <contact@andersondanilo.com>"]
 edition = "2018"
-keywords = ["tizen", "cargo", "plugin", "subcommand"]
+keywords = ["tizen", "cargo", "plugin", "subcommand", "rutin"]
 license = "apache-2.0"
 categories = [
   "command-line-utilities",
@@ -12,8 +12,12 @@ categories = [
   "development-tools::cargo-plugins"
 ]
 readme = "README.md"
-repository = "https://github.com/tizen-rs/cargo-tizen"
-homepage = "https://github.com/tizen-rs/cargo-tizen"
+repository = "https://github.com/andersondanilo/cargo-rutin-tizen"
+homepage = "https://github.com/andersondanilo/cargo-rutin-tizen"
+
+[[bin]]
+name = "cargo-tizen"
+path = "src/cargo-tizen/main.rs"
 
 [dependencies]
 toml = "~0.5.8"
