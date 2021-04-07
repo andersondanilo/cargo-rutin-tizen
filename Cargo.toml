@@ -5,7 +5,7 @@ version = "0.1.0"
 authors = ["Anderson Danilo <contact@andersondanilo.com>"]
 edition = "2018"
 keywords = ["tizen", "cargo", "plugin", "subcommand", "rutin"]
-license = "apache-2.0"
+license = "Apache-2.0"
 categories = [
   "command-line-utilities",
   "development-tools",
