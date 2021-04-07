@@ -1,6 +1,6 @@
 [package]
 name = "cargo-rutin-tizen"
-description = "Cargo tool to compile and run tizen applications (wrapper arround tizen sdk tools)"
+description = "Cargo tool to compile and run tizen wearable applications (wrapper arround tizen sdk tools)"
 version = "0.1.0"
 authors = ["Anderson Danilo <contact@andersondanilo.com>"]
 edition = "2018"
