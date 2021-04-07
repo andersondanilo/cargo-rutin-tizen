@@ -1,8 +1,15 @@
 [tizen]
 is_emulator = false
 device_triple = "arm-linux-gnueabi"
-emulator_triple = "i586-linux-gnueabi"
 sync_files = ["shared", "res", "tizen-manifest.xml"]
+
+[tizen.device]
+tizen_triple = "arm-linux-gnueabi"
+security_profile = "default"
+
+[tizen.emulator]
+tizen_triple = "i586-linux-gnueabi"
+security_profile = "default"
 
 [tizen.target.arm-linux-gnueabi]
 rust_triple = "arm-unknown-linux-gnueabi"

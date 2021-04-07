@@ -33,6 +33,7 @@ pub struct TizenEnv {
     pub cargo_pkg_name: String,
     pub sync_files: Vec<String>,
     pub is_release: bool,
+    pub security_profile: String,
 }
 
 impl TizenEnv {
@@ -60,6 +61,7 @@ impl TizenEnv {
         let app_label = config_provider.get_value(&ConfigType::AppLabel)?;
         let app_ui_type = config_provider.get_value(&ConfigType::AppUiType)?;
         let sync_files = config_provider.get_value(&ConfigType::SyncFiles)?;
+        let security_profile = config_provider.get_value(&ConfigType::SecurityProfile)?;
 
         let cargo_pkg_name = match config_provider.get_cargo_value("package.name") {
             Some(s) => s,
@@ -95,6 +97,7 @@ impl TizenEnv {
             sync_files: sync_files_array,
             app_label: app_label.value.clone(),
             app_ui_type: app_ui_type.value.clone(),
+            security_profile: security_profile.value.clone(),
             is_release,
             raw_config_values: vec![
                 studio_path,
@@ -105,6 +108,7 @@ impl TizenEnv {
                 tizen_triple,
                 device_triple,
                 emulator_triple,
+                security_profile,
                 toolchain,
                 rust_triple,
                 toolchain_path,
@@ -236,6 +240,7 @@ pub enum ConfigType {
     AppLabel,
     AppUiType,
     SyncFiles,
+    SecurityProfile,
 }
 
 pub enum ConfigFrom {
@@ -282,7 +287,11 @@ impl<'a> ConfigProvider<'a> {
     }
 
     fn get_value(&self, config_type: &ConfigType) -> Result<ConfigValue, TizenError> {
-        let dynamic_key: Option<String> = match config_type {
+        self.get_custom_value(&config_type, self.get_dynamic_key(&config_type))
+    }
+
+    fn get_dynamic_key(&self, config_type: &ConfigType) -> Option<String> {
+        match config_type {
             ConfigType::RustTriple => match self.get_value(&ConfigType::SelectedTriple) {
                 Ok(selected_triple) => Some(format!(
                     "tizen.target.{}.rust_triple",
@@ -304,10 +313,30 @@ impl<'a> ConfigProvider<'a> {
                 )),
                 Err(_) => None,
             },
+            ConfigType::SecurityProfile => match self.get_value(&ConfigType::IsEmulator) {
+                Ok(is_emulator) => Some(format!(
+                    "tizen.{}.security_profile",
+                    if str_to_bool(&is_emulator.value) {
+                        "emulator"
+                    } else {
+                        "device"
+                    }
+                )),
+                Err(_) => None,
+            },
+            ConfigType::EmulatorTriple => match self.get_value(&ConfigType::IsEmulator) {
+                Ok(is_emulator) => Some(format!(
+                    "tizen.{}.tizen_triple",
+                    if str_to_bool(&is_emulator.value) {
+                        "emulator"
+                    } else {
+                        "device"
+                    }
+                )),
+                Err(_) => None,
+            },
             _ => None,
-        };
-
-        self.get_custom_value(&config_type, dynamic_key)
+        }
     }
 
     fn get_custom_value(
@@ -480,7 +509,7 @@ impl<'a> ConfigProvider<'a> {
                 let mut path = PathBuf::from(&self.get_value(&ConfigType::StudioPath)?.value);
                 path.push("platforms");
                 path.push(format!("tizen-{}", api_version));
-                path.push(format!("{}", app_profile));
+                path.push(&app_profile);
                 path.push("rootstraps");
                 path.push(format!(
                     "{}-{}-{}.core",
@@ -601,7 +630,6 @@ impl<'a> ConfigProvider<'a> {
             ConfigType::AppExec => None,
             ConfigType::RootstrapPath => Some("tizen.rootstrap_path".to_string()),
             ConfigType::DeviceTriple => Some("tizen.device_triple".to_string()),
-            ConfigType::EmulatorTriple => Some("tizen.emulator_triple".to_string()),
             ConfigType::SelectedTriple => Some("tizen.selected_triple".to_string()),
             ConfigType::Toolchain => Some("tizen.toolchain".to_string()),
             ConfigType::TizenBin => Some("tizen.bin_path".to_string()),

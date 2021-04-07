@@ -19,13 +19,18 @@ pub fn run(tizen_env: &TizenEnv, args: &ArgMatches) -> Result<i32, TizenError> {
     remove_tizen_output_if_exists(&tizen_output_dir, assume_yes)?;
     create_tizen_output(&tizen_env)?;
 
-    let tizen_args = vec![
+    let mut tizen_args = vec![
         "package".to_string(),
         "-t".to_string(),
         "tpk".to_string(),
         "--project".to_string(),
         tizen_output_dir.to_str().unwrap().to_string(),
     ];
+
+    if !tizen_env.security_profile.is_empty() && tizen_env.security_profile != "default" {
+        tizen_args.push("--sign".to_string());
+        tizen_args.push(tizen_env.security_profile.clone());
+    }
 
     let mut handle = run_command(
         &tizen_env,
